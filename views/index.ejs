@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Shortener - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Initial page load check -->
+    <script>
+        // Check if we have a token
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+        } else {
+            // Add token to all subsequent requests
+            const meta = document.createElement('meta');
+            meta.name = 'auth-token';
+            meta.content = token;
+            document.head.appendChild(meta);
+        }
+    </script>
+
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">URL Shortener</a>
+            <div class="d-flex align-items-center">
+                <span class="text-light me-3" id="userEmail"></span>
+                <button class="btn btn-outline-light" id="logout-btn">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card shadow">
+                    <div class="card-body p-4">
+                        <h5 class="card-title mb-4">Shorten Your URL</h5>
+                        <div id="status-message"></div>
+                        <form id="url-form">
+                            <div class="mb-3">
+                                <label for="longUrl" class="form-label">Long URL</label>
+                                <input type="url" class="form-control" id="longUrl" name="longUrl" required placeholder="https://example.com/long-url">
+                            </div>
+                            <div class="mb-3">
+                                <label for="customCode" class="form-label">Custom Code (Optional)</label>
+                                <input type="text" class="form-control" id="customCode" name="customCode" placeholder="e.g., my-custom-url">
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">Shorten</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card shadow mt-4">
+                    <div class="card-body p-4">
+                        <h5 class="card-title mb-4">Your URLs</h5>
+                        <div class="table-responsive">
+                            <table class="table" id="urls-table">
+                                <thead>
+                                    <tr>
+                                        <th>Short URL</th>
+                                        <th>Original URL</th>
+                                        <th>Clicks</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="4" class="text-center">Loading your URLs...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+            return;
+        }
+
+        // Display user email
+        const userEmail = localStorage.getItem('user_email');
+        if (userEmail) {
+            document.getElementById('userEmail').textContent = userEmail;
+        }
+
+        // Load URLs
+        try {
+            const response = await fetch('/api/url/my-urls', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            const urls = await response.json();
+            
+            const tbody = document.querySelector('#urls-table tbody');
+            if (urls.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center">No URLs shortened yet</td></tr>';
+            } else {
+                tbody.innerHTML = urls.map(url => `
+                    <tr>
+                        <td>
+                            <a href="${url.shortUrl}" target="_blank">${url.shortUrl}</a>
+                            <button class="btn btn-sm btn-outline-primary copy-btn" data-url="${url.shortUrl}">Copy</button>
+                        </td>
+                        <td>${url.longUrl}</td>
+                        <td>${url.clicks}</td>
+                        <td>${new Date(url.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                `).join('');
+
+                // Add copy functionality to buttons
+                document.querySelectorAll('.copy-btn').forEach(button => {
+                    button.addEventListener('click', copyToClipboard);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load URLs:', error);
+        }
+
+        // Handle logout
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    localStorage.clear();
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                console.error('Logout failed:', error);
+            }
+        });
+
+        // Form submission
+        const form = document.getElementById('url-form');
+        const statusMessage = document.getElementById('status-message');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.classList.add('loading');
+            
+            try {
+                const formData = {
+                    longUrl: form.longUrl.value.trim(),
+                    customCode: form.customCode.value.trim()
+                };
+
+                const response = await fetch('/api/url/shorten', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Add new row to table
+                    const tbody = document.querySelector('#urls-table tbody');
+                    const firstRow = tbody.querySelector('tr');
+                    
+                    if (firstRow && firstRow.querySelector('td').colSpan === 4) {
+                        tbody.innerHTML = '';
+                    }
+
+                    const row = tbody.insertRow(0);
+                    row.innerHTML = `
+                        <td>
+                            <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>
+                            <button class="btn btn-sm btn-outline-primary copy-btn" data-url="${data.shortUrl}">Copy</button>
+                        </td>
+                        <td>${data.longUrl}</td>
+                        <td>0</td>
+                        <td>${new Date().toLocaleDateString()}</td>
+                    `;
+
+                    // Add copy functionality to new button
+                    row.querySelector('.copy-btn').addEventListener('click', copyToClipboard);
+                    
+                    // Clear form
+                    form.reset();
+                    
+                    // Show success message
+                    statusMessage.innerHTML = `
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            URL shortened successfully!
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                } else {
+                    statusMessage.innerHTML = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            ${data.error || 'Failed to shorten URL'}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusMessage.innerHTML = `
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        An error occurred. Please try again.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+            } finally {
+                submitButton.disabled = false;
+                submitButton.classList.remove('loading');
+            }
+        });
+
+        // Copy to clipboard function
+        const copyToClipboard = async (e) => {
+            const button = e.target;
+            const url = button.dataset.url;
+            
+            try {
+                await navigator.clipboard.writeText(url);
+                button.textContent = 'Copied!';
+                setTimeout(() => {
+                    button.textContent = 'Copy';
+                }, 2000);
+            } catch (err) {
+                console.error('Copy error:', err);
+                statusMessage.innerHTML = `
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        Failed to copy URL
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+            }
+        };
+    });
+    </script>
+</body>
+</html> 
