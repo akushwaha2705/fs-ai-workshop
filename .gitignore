@@ -21,3 +21,5 @@ build/
 *.swp
 *.swo
 .DS_Store 
+.vercel
+.env*.local
