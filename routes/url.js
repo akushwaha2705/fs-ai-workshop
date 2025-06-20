@@ -4,6 +4,7 @@ const validUrl = require('valid-url');
 const shortid = require('shortid');
 const Url = require('../models/Url');
 const { requireAuth } = require('../middleware/auth');
+const qrcode = require('qrcode');
 
 // Constants
 const CUSTOM_CODE_MIN_LENGTH = 4;
@@ -74,7 +75,13 @@ router.post('/shorten', requireAuth, async (req, res) => {
     let url = await Url.findOne({ longUrl: sanitizedUrl, userId: req.user.id });
     if (url) {
       console.log('URL already exists:', url);
-      return res.json(url);
+      let qrCodeDataUrl;
+      try {
+        qrCodeDataUrl = await qrcode.toDataURL(url.shortUrl);
+      } catch (qrErr) {
+        qrCodeDataUrl = null;
+      }
+      return res.json({ ...url.toObject(), qrCode: qrCodeDataUrl });
     }
 
     // Create URL code
@@ -92,6 +99,15 @@ router.post('/shorten', requireAuth, async (req, res) => {
     const shortUrl = `${baseUrl}/${urlCode}`;
     console.log('Generated short URL:', shortUrl);
 
+    // Generate QR code
+    let qrCodeDataUrl;
+    try {
+      qrCodeDataUrl = await qrcode.toDataURL(shortUrl);
+    } catch (qrErr) {
+      console.error('QR code generation error:', qrErr);
+      qrCodeDataUrl = null;
+    }
+
     url = new Url({
       urlCode,
       longUrl: sanitizedUrl,
@@ -103,7 +119,7 @@ router.post('/shorten', requireAuth, async (req, res) => {
 
     await url.save();
     console.log('Saved new URL:', url);
-    res.json(url);
+    res.json({ ...url.toObject(), qrCode: qrCodeDataUrl });
   } catch (err) {
     console.error('Server error:', err);
     // Handle duplicate key error
@@ -134,8 +150,18 @@ router.get('/my-urls', requireAuth, async (req, res) => {
       Url.countDocuments({ userId: req.user.id })
     ]);
 
+    const urlsWithQr = await Promise.all(urls.map(async url => {
+      let qrCodeDataUrl;
+      try {
+        qrCodeDataUrl = await qrcode.toDataURL(url.shortUrl);
+      } catch (qrErr) {
+        qrCodeDataUrl = null;
+      }
+      return { ...url.toObject(), qrCode: qrCodeDataUrl };
+    }));
+
     res.json({
-      urls,
+      urls: urlsWithQr,
       pagination: {
         total,
         page,

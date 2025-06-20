@@ -65,6 +65,7 @@
                                 <thead>
                                     <tr>
                                         <th>Short URL</th>
+                                        <th>QR</th>
                                         <th>Original URL</th>
                                         <th>Clicks</th>
                                         <th>Created</th>
@@ -117,6 +118,7 @@
                             <a href="${url.shortUrl}" target="_blank">${url.shortUrl}</a>
                             <button class="btn btn-sm btn-outline-primary copy-btn" data-url="${url.shortUrl}">Copy</button>
                         </td>
+                        <td><img src="${url.qrCode}" alt="QR" style="width:60px;height:60px;"></td>
                         <td>${url.longUrl}</td>
                         <td>${url.clicks}</td>
                         <td>${new Date(url.createdAt).toLocaleDateString()}</td>
@@ -194,6 +196,7 @@
                             <a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>
                             <button class="btn btn-sm btn-outline-primary copy-btn" data-url="${data.shortUrl}">Copy</button>
                         </td>
+                        <td><img src="${data.qrCode}" alt="QR" style="width:60px;height:60px;"></td>
                         <td>${data.longUrl}</td>
                         <td>0</td>
                         <td>${new Date().toLocaleDateString()}</td>
